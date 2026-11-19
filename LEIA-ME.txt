@@ -40,3 +40,9 @@ CORRECAO EXTRA - ATUALIZACAO DE MENSAGENS
 - O envio de notas ocorre sem recarregar a pagina; depois do envio a tela consulta a mensagem gravada.
 - As consultas validam resposta JSON e mostram indicacao quando ha falha de conexao/sessao.
 - A atualizacao depende de o novo app.py estar publicado no Render e de todos os usuarios acessarem a mesma base de dados.
+
+
+FAVICON SMART INFORMATICA
+- Adicionado portal/favicon.png com o simbolo azul e laranja da Smart.
+- O app.py disponibiliza /favicon.png e inclui o icone na aba do navegador e no atalho de celular.
+- Publique os arquivos no Render e atualize a pagina com Ctrl+F5. Se o icone antigo persistir, feche e reabra a aba.

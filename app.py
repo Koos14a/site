@@ -150,6 +150,10 @@ def portal():
 def logo():
     return send_from_directory(PORTAL_DIR, "logo.png")
 
+@app.route("/favicon.png")
+def favicon():
+    return send_from_directory(PORTAL_DIR, "favicon.png")
+
 # ---------------- solicitante ----------------
 @app.route("/chamados")
 def index():
@@ -323,7 +327,7 @@ textarea{min-height:90px;resize:vertical}label{display:block;margin:10px 0 4px;f
 @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}.bar{grid-template-columns:1fr 1fr}.bar input{grid-column:1/-1}.g2{grid-template-columns:1fr}}
 """
 BASE = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}Chamados de TI{% endblock %}</title><style>""" + CSS + """</style></head><body><div id="toast"></div><div class="wrap">
+<title>{% block title %}Chamados de TI{% endblock %}</title><link rel="icon" type="image/png" href="{{ url_for('favicon') }}"><link rel="apple-touch-icon" href="{{ url_for('favicon') }}"><style>""" + CSS + """</style></head><body><div id="toast"></div><div class="wrap">
 <div class="top"><h1><a href="{{ url_for('painel') if is_tech else url_for('portal') }}" style="text-decoration:none;color:inherit">🛠️ Chamados de TI</a></h1>
 <div class="row" style="margin:0">{% if is_tech %}<form method="post" action="{{ url_for('sair') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Sair</button></form>
 {% else %}<a class="me" href="{{ url_for('index') }}">Abrir chamado</a> <a class="me" href="{{ url_for('login') }}">Área do técnico</a>{% endif %}</div></div>
