@@ -3,7 +3,7 @@
 Solicitante: digita o nome e abre o chamado (sem conta). Tecnico: login por senha.
 Aviso no Telegram a cada chamado novo e a cada nota do solicitante."""
 import os, sys, sqlite3, secrets, hmac, time, uuid, threading, urllib.request, urllib.parse, json
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from functools import wraps
 from flask import (Flask, g, request, session, redirect, url_for, abort,
@@ -136,7 +136,7 @@ def _csrf():
 @app.template_filter("dt")
 def _dt(ts):
     if ts is None: return "—"
-    return datetime.fromtimestamp(ts, ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+    return datetime.fromtimestamp(float(ts), timezone.utc).astimezone(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
 
 @app.context_processor
 def _ctx(): return dict(csrf=session.get("csrf", ""), STATUS=STATUS, PRIOS=PRIOS, CATS=CATS, is_tech=session.get("tech"))
@@ -354,41 +354,94 @@ TICKET = """{% extends 'base.html' %}{% block body %}<div class="card"><div clas
 <form method="post" action="{{ url_for('acao', tid=t['id'], acao='excluir') }}" style="margin:0" onsubmit="return confirm('Excluir este chamado?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="dan">Excluir</button></form></div>
 {% elif t['status'] != 'Resolvido' %}<form method="post" action="{{ url_for('resolver', token=t['token']) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Marcar como resolvido</button></form>{% endif %}</div>
 <h2>Histórico <span class="me" id="sync-state">· atualização automática ativa</span></h2><div id="notes-list">{% for n in notes %}<div class="note {{ 't' if n['is_tech'] }}" data-note-id="{{ n['id'] }}">{{ n['text'] }} <small>· {{ n['author'] }} · {{ n['created']|dt }}</small></div>{% else %}<div class="me" id="empty-notes">Nenhuma nota ainda.</div>{% endfor %}</div>
-<form class="row" method="post" action="{{ url_for('acao', tid=t['id'], acao='nota') if tech else url_for('nota_solic', token=t['token']) }}"><input type="hidden" name="csrf" value="{{ csrf }}">
-<input name="text" placeholder="Adicionar nota" style="flex:1" required><button class="pri">Enviar</button></form>
+<form class="row" id="note-form" method="post" action="{{ url_for('acao', tid=t['id'], acao='nota') if tech else url_for('nota_solic', token=t['token']) }}"><input type="hidden" name="csrf" value="{{ csrf }}">
+<input name="text" placeholder="Adicionar nota" style="flex:1" required><button class="pri" id="note-send">Enviar</button></form>
+<div class="me" id="note-feedback" role="status" aria-live="polite"></div>
 {% if not tech %}<p class="me">Guarde este endereço para acompanhar o chamado depois.</p>{% endif %}
 <script>
 (function(){
   var list=document.getElementById('notes-list');
   var statusEl=document.getElementById('ticket-status');
   var syncEl=document.getElementById('sync-state');
-  var lastId=0;
-  list.querySelectorAll('[data-note-id]').forEach(function(n){lastId=Math.max(lastId,Number(n.dataset.noteId)||0)});
+  var noteForm=document.getElementById('note-form');
+  var feedback=document.getElementById('note-feedback');
+  var sendButton=document.getElementById('note-send');
+  var lastId=0, polling=false;
+  list.querySelectorAll('[data-note-id]').forEach(function(n){
+    lastId=Math.max(lastId,Number(n.dataset.noteId)||0);
+  });
   var endpoint={{ (url_for('atualizacoes_tecnico', tid=t['id']) if tech else url_for('atualizacoes_solicitante', token=t['token']))|tojson }};
+
   function poll(){
-    if(document.hidden)return;
-    fetch(endpoint+'?after='+lastId,{cache:'no-store',headers:{'Accept':'application/json'}})
-      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
-      .then(function(data){
-        if(statusEl && statusEl.textContent!==data.status){
-          statusEl.textContent=data.status;
-          statusEl.className='b s-'+data.status.split(' ')[0];
-        }
-        (data.notes||[]).forEach(function(n){
-          if(n.id<=lastId)return;
-          var item=document.createElement('div');
-          item.className='note'+(n.is_tech?' t':''); item.dataset.noteId=n.id;
-          item.appendChild(document.createTextNode(n.text+' '));
-          var small=document.createElement('small');
-          small.textContent='· '+n.author+' · '+n.created; item.appendChild(small);
-          var empty=document.getElementById('empty-notes');if(empty)empty.remove();
-          list.appendChild(item);lastId=n.id;
-        });
-        if(syncEl)syncEl.textContent='· atualizado agora';
-      }).catch(function(){if(syncEl)syncEl.textContent='· tentando reconectar…'});
+    if(document.hidden || polling) return;
+    polling=true;
+    fetch(endpoint+'?after='+lastId+'&_='+Date.now(), {
+      method:'GET', cache:'no-store', credentials:'same-origin',
+      headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}
+    })
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      var type=r.headers.get('content-type')||'';
+      if(type.indexOf('application/json')===-1) throw new Error('Resposta não JSON (sessão pode ter expirado)');
+      return r.json();
+    })
+    .then(function(data){
+      if(statusEl && statusEl.textContent.trim()!==data.status){
+        statusEl.textContent=data.status;
+        statusEl.className='b s-'+data.status.split(' ')[0];
+      }
+      (data.notes||[]).forEach(function(n){
+        if(n.id<=lastId) return;
+        var item=document.createElement('div');
+        item.className='note'+(n.is_tech?' t':'');
+        item.dataset.noteId=n.id;
+        item.appendChild(document.createTextNode(n.text+' '));
+        var small=document.createElement('small');
+        small.textContent='· '+n.author+' · '+n.created;
+        item.appendChild(small);
+        var empty=document.getElementById('empty-notes');
+        if(empty) empty.remove();
+        list.appendChild(item);
+        lastId=n.id;
+      });
+      if(syncEl) syncEl.textContent='· atualizado agora';
+    })
+    .catch(function(err){
+      if(syncEl) syncEl.textContent='· falha na atualização; tentando novamente';
+      console.warn('Falha ao atualizar mensagens:',err);
+    })
+    .finally(function(){polling=false;});
   }
-  setInterval(poll,5000);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)poll()});
+
+  // Atualiza imediatamente ao abrir e depois a cada 3 segundos.
+  poll();
+  setInterval(poll,3000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden) poll();});
+
+  // Envia a nota sem recarregar a página; em seguida busca a mensagem gravada no servidor.
+  if(noteForm){
+    noteForm.addEventListener('submit',function(e){
+      e.preventDefault();
+      if(sendButton) sendButton.disabled=true;
+      if(feedback) feedback.textContent='Enviando…';
+      fetch(noteForm.action,{
+        method:'POST', body:new FormData(noteForm), credentials:'same-origin',
+        cache:'no-store', redirect:'follow',
+        headers:{'X-Requested-With':'XMLHttpRequest'}
+      })
+      .then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        noteForm.querySelector('[name="text"]').value='';
+        if(feedback) feedback.textContent='Mensagem enviada.';
+        poll();
+      })
+      .catch(function(err){
+        if(feedback) feedback.textContent='Não foi possível enviar. Verifique sua conexão e tente novamente.';
+        console.error('Falha ao enviar mensagem:',err);
+      })
+      .finally(function(){if(sendButton) sendButton.disabled=false;});
+    });
+  }
 })();
 </script>{% endblock %}"""
 PAINEL = """{% extends 'base.html' %}{% block body %}<div class="stats">
