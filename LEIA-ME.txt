@@ -1,0 +1,30 @@
+SMART CHAMADOS - VERSAO COM ATUALIZACAO AUTOMATICA
+
+ALTERACOES
+- Paginas de acompanhamento de chamados consultam novas mensagens a cada 5 segundos.
+- O status do chamado e atualizado na tela sem recarregar manualmente.
+- O painel do tecnico detecta novos chamados e alteracoes recentes a cada 5 segundos.
+- Datas e horarios sao exibidos no fuso America/Sao_Paulo (Brasilia), independentemente do fuso do servidor.
+- O servidor usa a variavel PORT fornecida pelo Render, com CHAMADOS_PORTA como alternativa.
+- As consultas de atualizacao usam respostas sem cache.
+
+PUBLICACAO NO RENDER
+1. Substitua os arquivos do projeto pelos arquivos desta pasta, mantendo a estrutura:
+   app.py
+   requirements.txt
+   portal/index.html
+2. Build Command: pip install -r requirements.txt
+3. Start Command: python app.py
+4. Configure a variavel de ambiente CHAMADOS_SENHA com uma senha forte para o tecnico.
+5. Configure CHAMADOS_DATA para o caminho de montagem de um Persistent Disk, por exemplo /var/data,
+   e monte o disco nesse mesmo caminho. Isso preserva o SQLite, os anexos e a chave de sessao entre deploys.
+6. Opcional: configure CHAMADOS_URL=https://suport-smart-rfok.onrender.com para links enviados pelo Telegram.
+
+IMPORTANTE
+- Nao publique senhas, tokens do Telegram ou arquivos .env no ZIP/repositorio.
+- Antes de substituir o app em producao, faca backup do banco chamados.db e da pasta uploads.
+- Se o banco atual estiver em outro local, migre chamados.db e uploads para o disco persistente antes
+  de apontar CHAMADOS_DATA para /var/data; caso contrario o sistema podera iniciar um banco vazio.
+- O horario de funcionamento do portal permanece configuravel no campo CONFIG.horario em portal/index.html.
+  Ele foi mantido vazio porque o arquivo enviado nao informa o horario comercial correto.
+- O arquivo index-original.html e apenas uma copia da versao anterior do portal; o app serve portal/index.html.
